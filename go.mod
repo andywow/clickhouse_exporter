@@ -1,9 +1,10 @@
-module github.com/andywow/postgres_exporter
+module github.com/andywow/clickhouse_exporter
 
 go 1.14
 
 require (
 	github.com/BurntSushi/toml v0.3.1
+	github.com/ClickHouse/clickhouse-go v1.4.3
 	github.com/beorn7/perks v1.0.1
 	github.com/golang/protobuf v1.4.2
 	github.com/jackc/pgx v3.6.2+incompatible

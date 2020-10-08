@@ -14,9 +14,10 @@ import (
 	//Required for debugging
 	//_ "net/http/pprof"
 
+	"database/sql"
+
 	"github.com/BurntSushi/toml"
-	_ "github.com/jackc/pgx/stdlib"
-	"github.com/jmoiron/sqlx"
+	_ "github.com/ClickHouse/clickhouse-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
@@ -28,7 +29,7 @@ var (
 	Version            = "0.0.0.dev"
 	listenAddress      = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry. (env: LISTEN_ADDRESS)").Default(getEnv("LISTEN_ADDRESS", ":9161")).String()
 	metricPath         = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics. (env: TELEMETRY_PATH)").Default(getEnv("TELEMETRY_PATH", "/metrics")).String()
-	landingPage        = []byte("<html><head><title>PostreSQL DB Exporter " + Version + "</title></head><body><h1>PostreSQL DB Exporter " + Version + "</h1><p><a href='" + *metricPath + "'>Metrics</a></p></body></html>")
+	landingPage        = []byte("<html><head><title>Clickhouse DB Exporter " + Version + "</title></head><body><h1>Clickhouse DB Exporter " + Version + "</h1><p><a href='" + *metricPath + "'>Metrics</a></p></body></html>")
 	defaultFileMetrics = kingpin.Flag("default.metrics", "File with default metrics in a TOML file. (env: DEFAULT_METRICS)").Default(getEnv("DEFAULT_METRICS", "default-metrics.toml")).String()
 	customMetrics      = kingpin.Flag("custom.metrics", "File that may contain various custom metrics in a TOML file. (env: CUSTOM_METRICS)").Default(getEnv("CUSTOM_METRICS", "")).String()
 	queryTimeout       = kingpin.Flag("query.timeout", "Query timeout (in seconds). (env: QUERY_TIMEOUT)").Default(getEnv("QUERY_TIMEOUT", "5")).String()
@@ -38,7 +39,7 @@ var (
 
 // Metric name parts.
 const (
-	namespace = "postgresql"
+	namespace = "clickhouse"
 	exporter  = "exporter"
 )
 
@@ -64,14 +65,14 @@ var (
 	additionalMetrics Metrics
 )
 
-// Exporter collects PostgreSQL DB metrics. It implements prometheus.Collector.
+// Exporter collects Clickhouse DB metrics. It implements prometheus.Collector.
 type Exporter struct {
 	dsn             string
 	duration, error prometheus.Gauge
 	totalScrapes    prometheus.Counter
 	scrapeErrors    *prometheus.CounterVec
 	up              prometheus.Gauge
-	db              *sqlx.DB
+	db              *sql.DB
 }
 
 // getEnv returns the value of an environment variable, or returns the provided fallback value
@@ -82,18 +83,9 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func atoi(stringValue string) int {
-	intValue, err := strconv.Atoi(stringValue)
-	if err != nil {
-		log.Fatal("error while converting to int:", err)
-		panic(err)
-	}
-	return intValue
-}
-
-func connect(dsn string) *sqlx.DB {
+func connect(dsn string) *sql.DB {
 	log.Debugln("Launching connection: ", dsn)
-	db, err := sqlx.Connect("pgx", dsn)
+	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
 		log.Errorln("Error while connecting to", dsn)
 		panic(err)
@@ -106,7 +98,7 @@ func connect(dsn string) *sqlx.DB {
 	return db
 }
 
-// NewExporter returns a new PostgreSQL DB exporter for the provided DSN.
+// NewExporter returns a new Clickhouse DB exporter for the provided DSN.
 func NewExporter(dsn string) *Exporter {
 	db := connect(dsn)
 	return &Exporter{
@@ -115,46 +107,46 @@ func NewExporter(dsn string) *Exporter {
 			Namespace: namespace,
 			Subsystem: exporter,
 			Name:      "last_scrape_duration_seconds",
-			Help:      "Duration of the last scrape of metrics from PostgreSQL DB.",
+			Help:      "Duration of the last scrape of metrics from Clickhouse DB.",
 		}),
 		totalScrapes: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: exporter,
 			Name:      "scrapes_total",
-			Help:      "Total number of times PostgreSQL DB was scraped for metrics.",
+			Help:      "Total number of times Clickhouse DB was scraped for metrics.",
 		}),
 		scrapeErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: exporter,
 			Name:      "scrape_errors_total",
-			Help:      "Total number of times an error occured scraping a PostgreSQL database.",
+			Help:      "Total number of times an error occured scraping a Clickhouse database.",
 		}, []string{"collector", "code"}),
 		error: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: exporter,
 			Name:      "last_scrape_error",
-			Help:      "Whether the last scrape of metrics from PostgreSQL DB resulted in an error (1 for error, 0 for success).",
+			Help:      "Whether the last scrape of metrics from Clickhouse DB resulted in an error (1 for error, 0 for success).",
 		}),
 		up: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "up",
-			Help:      "Whether the PostgreSQL database server is up.",
+			Help:      "Whether the Clickhouse database server is up.",
 		}),
 		db: db,
 	}
 }
 
-// Describe describes all the metrics exported by the PostgreSQL DB exporter.
+// Describe describes all the metrics exported by the Clickhouse DB exporter.
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	// We cannot know in advance what metrics the exporter will generate
 	// So we use the poor man's describe method: Run a collect
 	// and send the descriptors of all the collected metrics. The problem
-	// here is that we need to connect to the PostgreSQL DB. If it is currently
+	// here is that we need to connect to the Clickhouse DB. If it is currently
 	// unavailable, the descriptors will be incomplete. Since this is a
 	// stand-alone exporter and not used as a library within other code
 	// implementing additional metrics, the worst that can happen is that we
 	// don't detect inconsistent metrics created by this exporter
-	// itself. Also, a change in the monitored PostgreSQL instance may change the
+	// itself. Also, a change in the monitored Clickhouse instance may change the
 	// exported metrics during the runtime of the exporter.
 
 	metricCh := make(chan prometheus.Metric)
@@ -202,12 +194,12 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) {
 		}
 	}
 	if err = e.db.Ping(); err != nil {
-		log.Errorln("Error pinging postgresql:", err)
+		log.Errorln("Error pinging clickhouse:", err)
 		//e.db.Close()
 		e.up.Set(0)
 		return
 	} else {
-		log.Debugln("Successfully pinged PostgreSQL database: ")
+		log.Debugln("Successfully pinged Clickhouse database: ")
 		e.up.Set(1)
 	}
 
@@ -272,7 +264,7 @@ func GetMetricType(metricType string, metricsType map[string]string) prometheus.
 }
 
 // interface method to call ScrapeGenericValues using Metric struct values
-func ScrapeMetric(db *sqlx.DB, ch chan<- prometheus.Metric, metricDefinition Metric) error {
+func ScrapeMetric(db *sql.DB, ch chan<- prometheus.Metric, metricDefinition Metric) error {
 	log.Debugln("Calling function ScrapeGenericValues()")
 	return ScrapeGenericValues(db, ch, metricDefinition.Context, metricDefinition.Labels,
 		metricDefinition.MetricsDesc, metricDefinition.MetricsType,
@@ -281,7 +273,7 @@ func ScrapeMetric(db *sqlx.DB, ch chan<- prometheus.Metric, metricDefinition Met
 }
 
 // generic method for retrieving metrics.
-func ScrapeGenericValues(db *sqlx.DB, ch chan<- prometheus.Metric, context string, labels []string,
+func ScrapeGenericValues(db *sql.DB, ch chan<- prometheus.Metric, context string, labels []string,
 	metricsDesc map[string]string, metricsType map[string]string, fieldToAppend string, ignoreZeroResult bool, request string) error {
 	metricsCount := 0
 	genericParser := func(row map[string]string) error {
@@ -334,7 +326,7 @@ func ScrapeGenericValues(db *sqlx.DB, ch chan<- prometheus.Metric, context strin
 
 // inspired by https://kylewbanks.com/blog/query-result-to-map-in-golang
 // Parse SQL result and call parsing function to each row
-func GeneratePrometheusMetrics(db *sqlx.DB, parse func(row map[string]string) error, query string) error {
+func GeneratePrometheusMetrics(db *sql.DB, parse func(row map[string]string) error, query string) error {
 
 	// Add a timeout
 	timeout, err := strconv.Atoi(*queryTimeout)
@@ -347,7 +339,7 @@ func GeneratePrometheusMetrics(db *sqlx.DB, parse func(row map[string]string) er
 	rows, err := db.QueryContext(ctx, query)
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return errors.New("PostgreSQL query timed out")
+		return errors.New("Clickhouse query timed out")
 	}
 
 	if err != nil {
@@ -387,7 +379,7 @@ func GeneratePrometheusMetrics(db *sqlx.DB, parse func(row map[string]string) er
 
 }
 
-// PostgreSQL gives us some ugly names back. This function cleans things up for Prometheus.
+// Clickhouse gives us some ugly names back. This function cleans things up for Prometheus.
 func cleanName(s string) string {
 	s = strings.Replace(s, " ", "_", -1) // Remove spaces
 	s = strings.Replace(s, "(", "", -1)  // Remove open parenthesis
@@ -400,11 +392,11 @@ func cleanName(s string) string {
 
 func main() {
 	log.AddFlags(kingpin.CommandLine)
-	kingpin.Version("postgresql_exporter " + Version)
+	kingpin.Version("clickhouse_exporter " + Version)
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	log.Infoln("Starting postgresql_exporter " + Version)
+	log.Infoln("Starting clickhouse_exporter " + Version)
 	dsn := os.Getenv("DATA_SOURCE_NAME")
 	// Load default metrics
 	if _, err := toml.DecodeFile(*defaultFileMetrics, &metricsToScrap); err != nil {

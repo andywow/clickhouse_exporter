@@ -4,22 +4,22 @@ GOFLAGS        := -ldflags "$(LDFLAGS) -s -w"
 ARCH           ?= $(shell uname -m)
 GOARCH         ?= $(subst x86_64,amd64,$(patsubst i%86,386,$(ARCH)))
 BUILD_ARGS      = --build-arg VERSION=$(VERSION)
-DIST_DIR        = postgresql_exporter.$(VERSION).linux-${GOARCH}
-ARCHIVE         = postgresql_exporter.$(VERSION).linux-${GOARCH}.tar.gz
+DIST_DIR        = clickhouse_exporter.$(VERSION).linux-${GOARCH}
+ARCHIVE         = clickhouse_exporter.$(VERSION).linux-${GOARCH}.tar.gz
 
 linux:
 	@echo build linux
 	mkdir -p ./dist/$(DIST_DIR)
-	PKG_CONFIG_PATH=${PWD} GOOS=linux go build $(GOFLAGS) -o ./dist/$(DIST_DIR)/postgresql_exporter
+	PKG_CONFIG_PATH=${PWD} GOOS=linux go build $(GOFLAGS) -o ./dist/$(DIST_DIR)/clickhouse_exporter
 	cp default-metrics.toml ./dist/$(DIST_DIR)
 	(cd dist ; tar cfz $(ARCHIVE) $(DIST_DIR))
 
 darwin:
 	@echo build darwin
-	mkdir -p ./dist/postgresql_exporter.$(VERSION).darwin-${GOARCH}
-	PKG_CONFIG_PATH=${PWD} GOOS=darwin go build $(GOFLAGS) -o ./dist/postgresql_exporter.$(VERSION).darwin-${GOARCH}/postgresql_exporter
-	cp default-metrics.toml ./dist/postgresql_exporter.$(VERSION).darwin-${GOARCH}
-	(cd dist ; tar cfz postgresql_exporter.$(VERSION).darwin-${GOARCH}.tar.gz postgresql_exporter.$(VERSION).darwin-${GOARCH})
+	mkdir -p ./dist/clickhouse_exporter.$(VERSION).darwin-${GOARCH}
+	PKG_CONFIG_PATH=${PWD} GOOS=darwin go build $(GOFLAGS) -o ./dist/clickhouse_exporter.$(VERSION).darwin-${GOARCH}/clickhouse_exporter
+	cp default-metrics.toml ./dist/clickhouse_exporter.$(VERSION).darwin-${GOARCH}
+	(cd dist ; tar cfz clickhouse_exporter.$(VERSION).darwin-${GOARCH}.tar.gz clickhouse_exporter.$(VERSION).darwin-${GOARCH})
 
 local-build:  linux
 
